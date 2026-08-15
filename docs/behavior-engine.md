@@ -24,7 +24,7 @@ States:
 Never send every comment to the LLM.
 
 ```text
-comments -> normalize -> moderate -> deduplicate -> classify -> score -> select -> LLM
+comments -> normalize -> moderate -> deduplicate -> classify -> score -> select -> memory lookup -> LLM
 ```
 
 Conceptual score:
@@ -66,6 +66,55 @@ Character personality must be configuration-driven:
 }
 ```
 
+## Viewer Memory
+
+Viewer memory is a first-class input to Behavior Engine and is defined in `docs/memory-system.md`.
+
+The engine receives a bounded `viewer_memory` context through a repository/service interface.
+
+Input shape:
+
+```text
+BehaviorInput
+├── event
+├── character_state
+├── conversation_context
+└── viewer_memory
+```
+
+Example:
+
+```json
+{
+  "viewer_id": "user_123",
+  "display_name": "Hoàng Long",
+  "is_returning": true,
+  "interaction_count": 8,
+  "gift_count": 3,
+  "total_gift_value": 120,
+  "favorite_topics": ["anime", "games"],
+  "last_topics": ["One Piece"],
+  "memory_summary": "Returning viewer who often talks about anime."
+}
+```
+
+Memory should be used to improve continuity, for example:
+
+```text
+viewer returns
+→ recognize viewer
+→ retrieve relevant context
+→ naturally reference stored context when appropriate
+```
+
+Do not force memory into every response. The character should not repeatedly announce that it remembers the viewer.
+
+Memory is context, not unrestricted truth. The engine must not invent facts that are absent from stored memory.
+
+Prompt-generation code must not query the database directly. Use a `ViewerMemoryRepository` or equivalent interface.
+
+If memory is unavailable, continue with an empty memory context rather than blocking the live response path.
+
 ## Viewer context
 
 Maintain only useful context:
@@ -77,9 +126,13 @@ first_seen
 last_seen
 interaction_count
 gift_count
+total_gift_value
 last_topics
 last_response
+memory_summary
 ```
+
+Persistent storage and retention rules are defined in `docs/memory-system.md`.
 
 ## Nickname normalization
 
@@ -104,6 +157,8 @@ LARGE  -> surprise + special animation + high-priority speech
 COMBO  -> milestone/progression event
 ```
 
+Every accepted gift must update viewer gift memory idempotently.
+
 ## Idle behavior
 
 ```text
@@ -117,6 +172,8 @@ Idle speech must be short and context-aware. Avoid endless repetitive monologues
 ## Repetition control
 
 Track recent responses and reduce repeated sentence patterns, gestures, and reactions using a rolling context window.
+
+Viewer memory can provide historical context, but recent-session repetition control must remain separate from persistent memory.
 
 ## LLM contract
 
@@ -138,7 +195,7 @@ Invalid output is rejected and routed to fallback behavior.
 
 ## Fallback
 
-If the LLM fails, use contextual predefined response templates. The avatar remains operational.
+If the LLM fails, use contextual predefined response templates. The avatar remains operational. Missing viewer memory must also fall back to normal behavior.
 
 ## Acceptance Criteria
 
@@ -148,8 +205,13 @@ If the LLM fails, use contextual predefined response templates. The avatar remai
 - high-priority gifts can interrupt speech
 - state transitions are deterministic and tested
 - personality is configurable
-- viewer context works
+- first-time and returning viewers are distinguishable
+- viewer memory is retrieved through an explicit interface
+- interaction and gift history can influence context
+- memory is not mandatory for the response path
 - repeated responses are reduced
 - idle behavior works
 - LLM failure has a fallback
+- memory failure has a fallback
 - unit tests cover every state transition
+- tests cover new viewer, returning viewer, memory retrieval, and gift-history context
