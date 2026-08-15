@@ -25,9 +25,23 @@ All external and internal events use a common envelope for validation, deduplica
 
 Required fields: `id`, `type`, `version`, `timestamp`, `stream_id`, `source`, `payload`.
 
+The stable `user.id` is the canonical viewer identity within a platform. Display names and nicknames are mutable attributes.
+
 ## 3. Event Types
 
 MVP: `comment`, `gift`, `follow`, `join`, `like`, `share`, `subscribe`, `system`.
+
+Internal memory-related events may include:
+
+```text
+viewer.resolved
+viewer.created
+viewer.interaction_recorded
+viewer.gift_recorded
+viewer.memory_updated
+```
+
+These internal events use the same envelope contract.
 
 ## 4. Comment Event
 
@@ -148,7 +162,49 @@ MVP: `comment`, `gift`, `follow`, `join`, `like`, `share`, `subscribe`, `system`
 }
 ```
 
-## 11. Priority
+## 11. Viewer Memory Context
+
+The memory layer exposes a compact context to Behavior Engine:
+
+```json
+{
+  "viewer_id": "user_123",
+  "display_name": "Hoàng Long",
+  "is_returning": true,
+  "interaction_count": 8,
+  "gift_count": 3,
+  "total_gift_value": 120,
+  "favorite_topics": ["anime", "games"],
+  "last_topics": ["One Piece"],
+  "memory_summary": "Returning viewer who often talks about anime."
+}
+```
+
+This is context, not a free-form claim of fact. Only stored/derived data may be supplied.
+
+## 12. Memory Update Event
+
+```json
+{
+  "id": "evt_memory_001",
+  "type": "viewer.interaction_recorded",
+  "version": 1,
+  "timestamp": 1786800020000,
+  "stream_id": "live_123",
+  "source": "memory",
+  "user": {
+    "id": "user_123",
+    "display_name": "Hoàng Long"
+  },
+  "payload": {
+    "source_event_id": "evt_comment_001",
+    "interaction_type": "comment",
+    "intent": "compliment"
+  }
+}
+```
+
+## 13. Priority
 
 Recommended range:
 
@@ -165,25 +221,27 @@ Recommended range:
 
 Higher value means higher priority.
 
-## 12. Idempotency
+## 14. Idempotency
 
-Every event has a unique ID. Processed IDs must be retained for a configurable deduplication window. Duplicate events are ignored. Gift events must never trigger duplicate reactions.
+Every event has a unique ID. Processed IDs must be retained for a configurable deduplication window. Duplicate events are ignored.
 
-## 13. Event Simulator
+Memory updates must also be idempotent. A duplicate comment or gift event must not double-count interaction/gift totals.
 
-Support `single comment`, `comment burst`, `gift`, `gift burst`, `follow`, `join`, `mixed traffic`, `duplicate event`, and `malformed event` scenarios.
+## 15. Event Simulator
+
+Support `single comment`, `comment burst`, `gift`, `gift burst`, `follow`, `join`, `mixed traffic`, `duplicate event`, `malformed event`, and returning-viewer scenarios.
 
 Example:
 
 ```json
 {
-  "scenario": "gift_burst",
-  "duration_seconds": 60,
-  "comments_per_minute": 40,
-  "gifts_per_minute": 10
+  "scenario": "returning_viewer",
+  "viewer_id": "user_123",
+  "previous_interactions": 8,
+  "previous_gifts": 3
 }
 ```
 
-## 14. Schema Versioning
+## 16. Schema Versioning
 
 Every event contains `version`. Breaking semantic changes require a new schema version. Do not silently change existing semantics.
